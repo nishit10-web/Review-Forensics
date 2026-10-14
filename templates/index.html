@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review Forensics · Fake Review Detector & Quality Evaluator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#ffffff;--wash:#f4f6f9;--ink:#16202e;--mute:#5d6b7e;--line:#dde3ea;
+  --genuine:#12805c;--promo:#c27803;--smear:#c2410c;--bot:#6b7280;--ai:#6d3fd1;--accent:#1d4ed8;
+  --r:10px;
+}
+*{box-sizing:border-box}
+html{height:100%}
+body{margin:0;font:15px/1.55 Figtree,system-ui,sans-serif;color:var(--ink);background:var(--wash);
+  padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+h1,h2,h3{font-family:'Bricolage Grotesque',Figtree,sans-serif;margin:0;letter-spacing:-.01em}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+header{background:var(--paper);border-bottom:1px solid var(--line)}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 0 0;flex-wrap:wrap}
+.brand h1{font-size:22px;font-weight:700}
+.brand p{margin:2px 0 0;color:var(--mute);font-size:13px}
+.header-badges{display:flex;align-items:center;gap:8px}
+.db{font-size:12px;color:var(--genuine);border:1px solid #b7e0d0;background:#eefaf5;padding:3px 10px;border-radius:99px;font-weight:600}
+.doc-link{font-size:12px;color:var(--accent);border:1px solid #bfdbfe;background:#eff6ff;padding:3px 10px;border-radius:99px;text-decoration:none;font-weight:600}
+.doc-link:hover{background:#dbeafe}
+nav{display:flex;gap:4px;margin-top:14px;overflow-x:auto}
+nav button{background:none;border:0;border-bottom:3px solid transparent;padding:10px 14px;cursor:pointer;color:var(--mute);font-weight:600;white-space:nowrap}
+nav button[aria-selected=true]{color:var(--ink);border-color:var(--accent)}
+main{padding:24px 0 60px}
+section[hidden]{display:none}
+.grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:20px;align-items:start}
+@media(max-width:860px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);padding:20px}
+.panel h2{font-size:18px;margin-bottom:14px}
+label{display:block;font-weight:600;font-size:13px;margin:14px 0 5px}
+input[type=text],select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:#fff}
+textarea{min-height:130px;resize:vertical}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+.row>*{flex:1;min-width:140px}
+.stars{display:flex;gap:2px}
+.stars button{background:none;border:0;font-size:26px;line-height:1;cursor:pointer;color:#cfd6df;padding:2px}
+.stars button.on{color:#e8a317}
+.switch{display:flex;align-items:center;gap:8px;font-weight:500;cursor:pointer}
+.btn{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--ink);background:var(--ink);color:#fff;padding:10px 16px;border-radius:8px;font-weight:600;cursor:pointer;transition:all .15s ease}
+.btn.alt{background:#fff;color:var(--ink);border-color:var(--line)}
+.btn:hover{opacity:.9}
+.btn:disabled{opacity:.55;cursor:progress}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.chip{border:1px solid var(--line);background:var(--wash);border-radius:99px;padding:4px 11px;font-size:13px;cursor:pointer;transition:all .15s}
+.chip:hover{border-color:var(--accent);background:#fff}
+.verdict{border-left:8px solid var(--c,var(--line));background:var(--paper);border-radius:var(--r);border:1px solid var(--line);border-left-width:8px;padding:18px 20px}
+.verdict .cat{font:700 22px 'Bricolage Grotesque',sans-serif;color:var(--c)}
+.verdict .sub{color:var(--mute);margin-top:2px;font-size:14px}
+.meters{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;margin-top:16px}
+.meter b{display:block;font-size:12px;color:var(--mute);font-weight:600;margin-bottom:5px}
+.bar{height:8px;background:var(--wash);border-radius:99px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--c,var(--accent));transition:width .5s}
+.meter span{font-weight:600;font-size:14px}
+.empty{color:var(--mute);text-align:center;padding:36px 12px;border:1px dashed var(--line);border-radius:var(--r);background:var(--paper)}
+.err{background:#fef2f0;border:1px solid #f3c1b8;color:#9a2a14;padding:12px 14px;border-radius:8px;margin-top:12px}
+canvas{width:100%;height:220px;display:block}
+.stack>*+*{margin-top:16px}
+.rv{display:grid;grid-template-columns:34px 1fr auto;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+.rv:first-child{border-top:0}
+.rv .pos{font:700 16px 'Bricolage Grotesque';color:var(--mute)}
+.rv p{margin:2px 0 0;color:var(--mute);font-size:14px}
+.tag{font-size:12px;font-weight:600;padding:2px 9px;border-radius:99px;color:#fff;background:var(--c,var(--bot));height:fit-content;white-space:nowrap}
+.stat{display:flex;gap:24px;flex-wrap:wrap;margin:6px 0 14px}
+.stat div b{display:block;font:700 22px 'Bricolage Grotesque'}
+.stat div span{font-size:12px;color:var(--mute)}
+.con{display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.con:first-of-type{border-top:0}
+.ok{color:var(--genuine);font-weight:700}.no{color:var(--smear);font-weight:700}
+.slot{border:1px solid var(--line);border-radius:8px;padding:14px;margin-top:10px;background:#ffffff}
+.slot-badge{display:inline-block;font-size:11px;font-weight:700;text-transform:uppercase;padding:2px 8px;border-radius:4px;margin-bottom:6px}
+.aspect-tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 7px;border-radius:4px;background:#eff6ff;color:var(--accent);border:1px solid #bfdbfe;margin-right:4px;margin-top:4px}
+details{margin-top:14px;color:var(--mute);font-size:13px}
+pre{white-space:pre-wrap;background:var(--wash);padding:10px;border-radius:8px;overflow:auto;max-height:240px;font-family:'JetBrains Mono',monospace;font-size:12px}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--mute);margin-top:8px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;background:var(--c)}
+.history-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}
+.history-table th,.history-table td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line)}
+.history-table th{background:var(--wash);color:var(--mute);font-weight:600}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <div class="top">
+    <div class="brand"><h1>Review Forensics</h1><p>Tell real reviews from paid, smeared, bot and AI-written ones.</p></div>
+    <div class="header-badges">
+      <span class="db">SQLite connected</span>
+      <a href="/report" target="_blank" class="doc-link">📄 Viva Report ↗</a>
+    </div>
+  </div>
+  <nav role="tablist">
+    <button role="tab" aria-selected="true" data-tab="t1">Detector</button>
+    <button role="tab" aria-selected="false" data-tab="t2">Brand ranking</button>
+    <button role="tab" aria-selected="false" data-tab="t3">Featured showcase</button>
+  </nav>
+</div></header>
+
+<main class="wrap">
+<!-- TAB 1: DETECTOR -->
+<section id="t1" class="grid">
+  <div class="panel">
+    <h2>Check a review</h2>
+    <div class="row">
+      <div>
+        <label for="brand">Brand</label>
+        <select id="brand">
+          <option>Apple</option>
+          <option>Sony</option>
+          <option>Nike</option>
+          <option>Samsung</option>
+          <option>Dyson</option>
+          <option value="">Other</option>
+        </select>
+      </div>
+      <div>
+        <label for="product">Product name</label>
+        <input type="text" id="product" value="Apple iPhone 16 Pro Max">
+      </div>
+    </div>
+    
+    <label>Star rating</label>
+    <div class="stars" id="stars" role="radiogroup" aria-label="Star rating"></div>
+    
+    <label for="text">Review text</label>
+    <textarea id="text" placeholder="Paste or type a customer review here…"></textarea>
+    
+    <div class="chips" id="samples"></div>
+    
+    <label class="switch" style="margin-top:14px">
+      <input type="checkbox" id="verified" checked> Verified buyer
+    </label>
+    
+    <div class="actions">
+      <button class="btn" id="analyze">Analyze review</button>
+      <button class="btn alt" id="save">Analyze and add to brand reviews</button>
+    </div>
+    <div id="t1err"></div>
+
+    <!-- Collapsible SQLite History Table -->
+    <details style="margin-top:20px;">
+      <summary style="font-weight:600; cursor:pointer;">📁 View Review Scan History (SQLite ledger)</summary>
+      <div style="overflow-x:auto; margin-top:10px;">
+        <table class="history-table" id="histTable">
+          <thead>
+            <tr><th>Product</th><th>Rating</th><th>Verdict</th><th>Confidence</th><th>Date</th></tr>
+          </thead>
+          <tbody id="histBody">
+            <tr><td colspan="5" style="text-align:center; color:var(--mute);">Loading scan records...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </div>
+
+  <div class="stack">
+    <div id="result">
+      <div class="empty">Results appear here. Pick a preset sample or paste a review, then analyze it.</div>
+    </div>
+    <div class="panel">
+      <h2>Review mix for this product</h2>
+      <canvas id="dist"></canvas>
+      <div class="legend" id="legend"></div>
+  </div>
+
+  <!-- BATCH URL REVIEW SCRAPER PANEL (AT THE BOTTOM OF FIRST PAGE) -->
+  <div class="panel" style="grid-column: 1 / -1; margin-top: 10px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+      <div>
+        <h2>🌐 Batch URL Review Scraper & Forensics</h2>
+        <p style="margin:2px 0 0; color:var(--mute); font-size:13px;">
+          Paste a product or review website link to extract and audit all customer comments in bulk instead of entering them one by one.
+        </p>
+      </div>
+      <span class="db" id="scrapeStatusBadge">Ready to fetch</span>
+    </div>
+
+    <div class="row" style="margin-top:16px;">
+      <div style="flex:4; min-width:260px;">
+        <label for="urlInput" style="margin-top:0;">Website / Product Review Link</label>
+        <input type="text" id="urlInput" placeholder="https://www.apple.com/shop/buy-iphone/iphone-16-pro or paste any product review URL...">
+      </div>
+      <div style="flex:0; min-width:180px;">
+        <button class="btn" id="scrapeBtn" style="width:100%; justify-content:center;">
+          <span>⚡ Scrape & Audit Comments</span>
+        </button>
+      </div>
+    </div>
+
+    <div style="margin-top:12px;">
+      <span style="font-size:12px; font-weight:600; color:var(--mute);">Quick Test Links:</span>
+      <div class="chips" id="urlPresets" style="margin-top:4px;">
+        <button type="button" class="chip" data-url="https://www.apple.com/shop/buy-iphone/iphone-16-pro">🍎 Apple Store · iPhone 16 Pro</button>
+        <button type="button" class="chip" data-url="https://www.nike.com/running/pegasus-41-shoes">👟 Nike Store · Pegasus 41</button>
+        <button type="button" class="chip" data-url="https://electronics.sony.com/audio/headphones/wh-1000xm5">🎧 Sony Audio · WH-1000XM5</button>
+        <button type="button" class="chip" data-url="https://www.samsung.com/galaxy-s24-ultra">📱 Samsung Store · S24 Ultra</button>
+        <button type="button" class="chip" data-url="https://www.dyson.com/vacuum-cleaners/v15-detect">🌀 Dyson Store · V15 Detect</button>
+      </div>
+    </div>
+
+    <div id="urlErr"></div>
+
+    <!-- Scraped Reviews Result Area -->
+    <div id="urlResultArea" style="margin-top:20px; display:none;">
+      <!-- Summary stats bar -->
+      <div class="verdict" id="urlVerdictBox" style="--c:var(--genuine); margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+          <div>
+            <div class="cat" id="urlProductTitle">Product Name</div>
+            <div class="sub" id="urlSummarySub">Scraped comments · Evaluated via Supervised ML & AI Bot Detector</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font:700 20px 'Bricolage Grotesque';" id="urlQualityScore">88.5%</div>
+            <div style="font-size:12px; color:var(--mute);" id="urlOverallVerdict">Authentic Good Product</div>
+          </div>
+        </div>
+
+        <div class="stat" style="margin:16px 0 4px;" id="urlStatsRow">
+          <div><b id="urlTotalCount">0</b><span>Total Scraped</span></div>
+          <div><b id="urlGenuineCount" style="color:var(--genuine)">0</b><span>Genuine Reviews</span></div>
+          <div><b id="urlPromoCount" style="color:var(--promo)">0</b><span>Promotional</span></div>
+          <div><b id="urlDefamCount" style="color:var(--smear)">0</b><span>Smear Attacks</span></div>
+          <div><b id="urlBotCount" style="color:var(--bot)">0</b><span>Bot / AI Junk</span></div>
+          <div><b id="urlFakePct" style="color:var(--smear)">0%</b><span>Fake / Spam Ratio</span></div>
+        </div>
+      </div>
+
+      <!-- Scraped Comments Grid / List -->
+      <h3 style="font-size:16px; margin:16px 0 10px;">Audited Customer Comments (<span id="urlListCount">0</span>)</h3>
+      <div id="urlCommentsList" style="display:flex; flex-direction:column; gap:10px;"></div>
+    </div>
+  </div>
+</section>
+
+<!-- TAB 2: BRAND RANKING -->
+<section id="t2" hidden>
+  <div class="panel">
+    <h2>Rank reviews by trust</h2>
+    <div class="row">
+      <div>
+        <label for="b2">Brand</label>
+        <select id="b2">
+          <option value="all">All brands</option>
+          <option>Apple</option>
+          <option>Sony</option>
+          <option>Nike</option>
+          <option>Samsung</option>
+          <option>Dyson</option>
+        </select>
+      </div>
+      <div>
+        <label for="algo">Algorithm</label>
+        <select id="algo">
+          <option value="genetic">Genetic algorithm (OX1 Crossover)</option>
+          <option value="local_search">Local search (Hill climbing)</option>
+        </select>
+      </div>
+      <div style="flex:0">
+        <button class="btn" id="sort">Run optimization</button>
+      </div>
+    </div>
+    <div id="t2err"></div>
+  </div>
+
+  <div class="grid" style="margin-top:20px">
+    <div class="panel">
+      <h2>Trust score over time</h2>
+      <div class="stat" id="sortstat"></div>
+      <canvas id="curve"></canvas>
+    </div>
+    <div class="panel">
+      <h2>Ranked order</h2>
+      <div id="ranked"><div class="empty">Run the optimization to see the new trust-sorted order.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- TAB 3: FEATURED SHOWCASE (CSP) -->
+<section id="t3" hidden>
+  <div class="panel">
+    <h2>Pick the four featured reviews</h2>
+    <div class="row">
+      <div>
+        <label for="preset">Product showcase</label>
+        <select id="preset"></select>
+      </div>
+      <div style="flex:0">
+        <button class="btn" id="solve">Solve CSP</button>
+      </div>
+    </div>
+    <label class="switch" style="margin-top:12px">
+      <input type="checkbox" id="strict" checked> Strict mode (Require &ge; 3 distinct product aspects)
+    </label>
+    <div id="t3err"></div>
+  </div>
+
+  <div class="grid" style="margin-top:20px">
+    <div class="panel">
+      <h2>Featured reviews (Slots 1 to 4)</h2>
+      <div id="slots"><div class="empty">Choose a product and click Solve to see the four featured picks.</div></div>
+    </div>
+    <div class="panel">
+      <h2>Rules checked (All 6 Constraints)</h2>
+      <div id="cons"><div class="empty">Audit of the 6 platform constraints will appear here.</div></div>
+    </div>
+  </div>
+</section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const COL = { genuine: '#12805c', promo: '#c27803', smear: '#c2410c', bot: '#6b7280', ai: '#6d3fd1' };
+
+const pick = (o, ...k) => {
+  for (const x of k) {
+    if (o && o[x] !== undefined && o[x] !== null) return o[x];
+  }
+};
+
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const pct = v => { v = Number(v); if (isNaN(v)) return 0; return v <= 1 ? v * 100 : v; };
+
+async function api(url, body) {
+  const r = await fetch(url, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
+  if (!r.ok) throw new Error(`${url} returned status ${r.status}`);
+  return r.json();
+}
+
+function fail(id, e) {
+  $(id).innerHTML = `<div class="err">${esc(e.message)}. Please verify the backend is active.</div>`;
+}
+
+function colorFor(cat = '') {
+  cat = String(cat).toLowerCase();
+  if (cat.includes('genuine')) return COL.genuine;
+  if (cat.includes('promo')) return COL.promo;
+  if (cat.includes('defam')) return COL.smear;
+  if (cat.includes('ai')) return COL.ai;
+  return COL.bot;
+}
+
+/* Tab Navigation */
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.setAttribute('aria-selected', x === b));
+  ['t1', 't2', 't3'].forEach(id => {
+    $('#' + id).hidden = id !== b.dataset.tab;
+  });
+  if (b.dataset.tab === 't1') loadDist();
+  if (b.dataset.tab === 't3' && !$('#preset').children.length) loadPresets();
+});
+
+/* Star Rating Picker */
+let rating = 5;
+function drawStars() {
+  $('#stars').innerHTML = [1, 2, 3, 4, 5].map(n =>
+    `<button type="button" role="radio" aria-checked="${n === rating}" aria-label="${n} star${n > 1 ? 's' : ''}" class="${n <= rating ? 'on' : ''}" data-n="${n}">★</button>`
+  ).join('');
+  $('#stars').querySelectorAll('button').forEach(b => b.onclick = () => {
+    rating = +b.dataset.n;
+    drawStars();
+  });
+}
+drawStars();
+
+/* Preset Test Samples */
+const SAMPLES = {
+  'Genuine': {
+    b: 'Apple', p: 'Apple iPhone 16 Pro Max', r: 5,
+    t: 'The 5x tetraprism optical telephoto lens and battery life upgrade are substantial improvements over my older phone. Titanium frame is top notch.',
+    v: true
+  },
+  'Paid hype': {
+    b: 'Apple', p: 'Apple iPhone 16 Pro Max', r: 5,
+    t: 'AMAZING PRODUCT BEST EVER IN THE WORLD! BUY NOW GUYS GUARANTEED 100% SATISFACTION MIRACLE PHONE! CLICK HERE USE PROMO CODE APPLE20 BUY TODAY FAST!!',
+    v: false
+  },
+  'Smear': {
+    b: 'Apple', p: 'Apple iPhone 16 Pro Max', r: 1,
+    t: 'BUY FROM SAMSUNG INSTEAD! APPLE IS A TOTAL SCAM COMPANY STEALING CUSTOMER MONEY WITH COMPLETE FRAUD! WORST TRASH EVER MADE BOYCOTT THIS JUNK!!',
+    v: false
+  },
+  'Bot junk': {
+    b: 'Apple', p: 'Apple iPhone 16 Pro Max', r: 5,
+    t: 'good good good good good good good good good good good good good.',
+    v: false
+  },
+  'AI-written': {
+    b: 'Apple', p: 'Apple iPhone 16 Pro Max', r: 5,
+    t: 'In conclusion, the Apple iPhone 16 Pro Max is a true testament to modern engineering. It stands out as a game-changer with sleek and stylish titanium ergonomics and stellar battery life. Whether you are a casual user or a tech enthusiast, this phone boasts an impressive display and ticks all the right boxes. A must-have addition to any routine!',
+    v: false
+  }
+};
+
+$('#samples').innerHTML = Object.keys(SAMPLES).map(k => `<button type="button" class="chip">${k}</button>`).join('');
+$('#samples').querySelectorAll('.chip').forEach(c => c.onclick = () => {
+  const s = SAMPLES[c.textContent];
+  rating = s.r;
+  drawStars();
+  $('#brand').value = s.b || 'Apple';
+  $('#product').value = s.p || '';
+  $('#text').value = s.t;
+  $('#verified').checked = s.v;
+});
+
+/* Analyze / Save Review */
+function payload() {
+  return {
+    product_name: $('#product').value.trim() || 'General Product',
+    brand: $('#brand').value || 'Apple',
+    rating,
+    review_text: $('#text').value.trim(),
+    is_verified: $('#verified').checked
+  };
+}
+
+async function run(save) {
+  $('#t1err').innerHTML = '';
+  const p = payload();
+  if (!p.review_text) {
+    $('#t1err').innerHTML = '<div class="err">Please enter review text to analyze.</div>';
+    return;
+  }
+  [$('#analyze'), $('#save')].forEach(b => b.disabled = true);
+  try {
+    const d = await api(save ? '/api/reviews' : '/api/reviews/analyze', p);
+    showResult(d);
+    loadDist();
+    loadHistory();
+  } catch (e) {
+    fail('#t1err', e);
+  }
+  [$('#analyze'), $('#save')].forEach(b => b.disabled = false);
+}
+
+$('#analyze').onclick = () => run(false);
+$('#save').onclick = () => run(true);
+
+function meter(label, v, c) {
+  v = Math.max(0, Math.min(100, pct(v)));
+  return `<div class="meter" style="--c:${c || 'var(--accent)'}">
+    <b>${label}</b>
+    <div class="bar"><i style="width:${v}%"></i></div>
+    <span>${v.toFixed(1)}%</span>
+  </div>`;
+}
+
+function showResult(d) {
+  const cat = d.review_category || pick(d, 'category', 'predicted_category', 'label') || 'Genuine (Truthful) Review';
+  const c = colorFor(cat);
+  const verdict = d.product_verdict || pick(d, 'verdict', 'quality_verdict') || '';
+  const metrics = d.ml_metrics || {};
+  const conf = metrics.confidence_score ?? pick(d, 'confidence', 'confidence_pct');
+  const ai = metrics.ai_score ?? pick(d, 'ai_score', 'ai_probability');
+  const q = d.product_quality_score ?? pick(d, 'quality_score');
+
+  $('#result').innerHTML = `
+    <div class="verdict" style="--c:${c}">
+      <div class="cat">${esc(cat)}</div>
+      <div class="sub">${esc(verdict)} · Quality verdict for genuine consumers</div>
+      <div class="meters">
+        ${conf != null ? meter('Model confidence', conf, c) : ''}
+        ${ai != null ? meter('AI-written score', ai, COL.ai) : ''}
+        ${q != null ? meter('Product quality', q, COL.genuine) : ''}
+      </div>
+      <details>
+        <summary>View raw algorithm diagnostics</summary>
+        <pre>${esc(JSON.stringify(d, null, 2))}</pre>
+      </details>
+    </div>
+  `;
+}
+
+/* 6-Category Review Distribution Bar Chart */
+const CATS = [
+  ['Genuine good', 'genuine_good', 'genuine'],
+  ['Genuine bad', 'genuine_bad', 'genuine'],
+  ['Promotional', 'promo_spam', 'promo'],
+  ['Defamatory', 'defamatory', 'smear'],
+  ['Bot junk', 'bot_repetitive', 'bot'],
+  ['AI-written', 'ai_generated', 'ai']
+];
+
+async function loadDist() {
+  try {
+    const pn = encodeURIComponent($('#product').value.trim());
+    const d = await api('/api/reviews/distribution?product_name=' + pn);
+    const src = d.counts || d.distribution || {};
+    const vals = CATS.map(([n, k]) => Number(src[k] ?? src[n] ?? 0));
+    drawBars(vals);
+  } catch (e) {
+    drawBars([0, 0, 0, 0, 0, 0]);
+  }
+}
+
+function setup(cv) {
+  const r = cv.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = r.width * dpr;
+  cv.height = r.height * dpr;
+  const x = cv.getContext('2d');
+  x.scale(dpr, dpr);
+  x.clearRect(0, 0, r.width, r.height);
+  return [x, r.width, r.height];
+}
+
+function drawBars(v) {
+  const [x, w, h] = setup($('#dist'));
+  const max = Math.max(1, ...v);
+  const bw = w / 6;
+  x.font = '600 11px Figtree, sans-serif';
+  x.textAlign = 'center';
+  v.forEach((n, i) => {
+    const bh = (h - 40) * (n / max);
+    x.fillStyle = COL[CATS[i][2]];
+    x.fillRect(i * bw + bw * 0.18, h - 24 - bh, bw * 0.64, Math.max(2, bh));
+    x.fillStyle = '#16202e';
+    x.fillText(n, i * bw + bw / 2, h - 28 - bh);
+    x.fillStyle = '#5d6b7e';
+    x.fillText(CATS[i][0], i * bw + bw / 2, h - 6);
+  });
+}
+
+$('#legend').innerHTML = CATS.map(c =>
+  `<span><i style="--c:${COL[c[2]]}"></i>${c[0]}</span>`
+).join('');
+
+$('#product').addEventListener('change', loadDist);
+window.addEventListener('resize', loadDist);
+
+/* SQLite Scan History Loader */
+async function loadHistory() {
+  try {
+    const d = await api('/api/reviews?limit=8');
+    const rows = d.reviews || [];
+    if (!rows.length) {
+      $('#histBody').innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--mute);">No records in database yet.</td></tr>';
+      return;
+    }
+    $('#histBody').innerHTML = rows.map(r => `
+      <tr>
+        <td><strong>${esc(r.product_name)}</strong></td>
+        <td>${'★'.repeat(r.rating || 5)}</td>
+        <td><span style="color:${colorFor(r.review_category)}; font-weight:600;">${esc(r.product_verdict || r.review_category)}</span></td>
+        <td>${r.astar_metrics?.confidence_score ?? 90}%</td>
+        <td style="color:var(--mute);">${esc((r.created_at || '').slice(0, 10))}</td>
+      </tr>
+    `).join('');
+  } catch (e) {}
+}
+loadHistory();
+
+/* Tab 2: Brand Ranking via Genetic Algorithm & Local Search */
+async function sort() {
+  $('#t2err').innerHTML = '';
+  $('#sort').disabled = true;
+  try {
+    const d = await api('/api/brands/sort', {
+      brand: $('#b2').value,
+      algorithm: $('#algo').value,
+      pop_size: 40,
+      generations: 60
+    });
+    const a = d.initial_fitness;
+    const b = d.final_fitness;
+    const gain = d.fitness_improvement ?? (a != null && b != null ? (b - a) : null);
+    const t = d.execution_time_ms != null ? `${d.execution_time_ms}ms` : null;
+
+    $('#sortstat').innerHTML = [
+      ['Start Trust', a],
+      ['End Trust', b],
+      ['Gain', gain],
+      ['Time', t]
+    ].filter(s => s[1] != null).map(s =>
+      `<div><b>${typeof s[1] === 'number' ? s[1].toFixed(2) : esc(s[1])}</b><span>${s[0]}</span></div>`
+    ).join('');
+
+    drawCurve(d.fitness_history || []);
+
+    const list = d.sorted_reviews || [];
+    $('#ranked').innerHTML = list.length ? list.slice(0, 15).map((r, i) => {
+      const cat = r.review_category || '';
+      return `
+        <div class="rv">
+          <div class="pos">${i + 1}</div>
+          <div>
+            <b>${esc(r.brand || '')} · ${esc(r.product_name || '')}</b> ${'★'.repeat(+r.rating || 0)}
+            <p>${esc(r.review_text || '')}</p>
+          </div>
+          <span class="tag" style="--c:${colorFor(cat)}">${esc(cat.replace(/ \(.*\)/, ''))}</span>
+        </div>
+      `;
+    }).join('') : '<div class="empty">No reviews returned.</div>';
+  } catch (e) {
+    fail('#t2err', e);
+  }
+  $('#sort').disabled = false;
+}
+$('#sort').onclick = sort;
+
+function drawCurve(pts) {
+  pts = pts.map(p => typeof p === 'object' ? pick(p, 'fitness', 'value', 'y') : p).filter(n => typeof n === 'number');
+  const [x, w, h] = setup($('#curve'));
+  if (pts.length < 2) return;
+  const mn = Math.min(...pts);
+  const mx = Math.max(...pts);
+  const pad = 24;
+  const sx = i => pad + (w - pad * 2) * i / (pts.length - 1);
+  const sy = v => h - pad - (h - pad * 2) * (v - mn) / ((mx - mn) || 1);
+
+  x.strokeStyle = '#1d4ed8';
+  x.lineWidth = 2.5;
+  x.beginPath();
+  pts.forEach((v, i) => i ? x.lineTo(sx(i), sy(v)) : x.moveTo(sx(i), sy(v)));
+  x.stroke();
+
+  x.fillStyle = '#5d6b7e';
+  x.font = '11px Figtree, sans-serif';
+  x.fillText(mx.toFixed(1), 4, pad - 8);
+  x.fillText(mn.toFixed(1), 4, h - 6);
+}
+
+/* Tab 3: Constraint Satisfaction Problem (CSP) */
+let presetsData = {};
+async function loadPresets() {
+  try {
+    const d = await api('/api/csp/presets');
+    presetsData = d.presets || {};
+    $('#preset').innerHTML = Object.entries(presetsData).map(([k, p]) =>
+      `<option value="${k}">${esc(p.title || p.product || k)}</option>`
+    ).join('') || '<option value="apple_iphone">Apple iPhone 16 Pro Max</option>';
+  } catch (e) {
+    fail('#t3err', e);
+  }
+}
+loadPresets();
+
+$('#solve').onclick = async () => {
+  $('#t3err').innerHTML = '';
+  $('#solve').disabled = true;
+  const k = $('#preset').value;
+  const p = presetsData[k] || { brand: 'Apple', product: 'Apple iPhone 16 Pro Max' };
+  try {
+    const d = await api('/api/csp/solve', {
+      brand: p.brand || 'Apple',
+      product_name: p.product || '',
+      strict_mode: $('#strict').checked
+    });
+
+    const slots = d.featured_slots || [];
+    $('#slots').innerHTML = slots.length ? slots.map((s, i) => {
+      const aspectsHtml = (s.aspects || []).map(a => `<span class="aspect-tag">${esc(a)}</span>`).join('');
+      return `
+        <div class="slot">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <b>Slot ${i + 1} (${esc(s.slot_key || '')})</b>
+            ${s.is_verified ? '<span class="ok" style="font-size:12px;">✓ Verified Buyer</span>' : '<span style="color:var(--mute); font-size:12px;">Unverified</span>'}
+          </div>
+          <div style="color:#e8a317; font-size:14px; margin:2px 0;">${'★'.repeat(+s.rating || 0)} <span style="color:var(--mute); font-size:12px;">by ${esc(s.reviewer_name || 'Customer')}</span></div>
+          <div>${aspectsHtml}</div>
+          <p style="margin:6px 0 0; color:var(--mute); font-size:13px;">"${esc(s.review_text || '')}"</p>
+        </div>
+      `;
+    }).join('') : '<div class="empty">No solution found for these rules.</div>';
+
+    const cs = Object.values(d.constraints_status || {});
+    $('#cons').innerHTML = cs.length ? cs.map(c => {
+      const pass = c.satisfied === true;
+      return `
+        <div class="con">
+          <span class="${pass ? 'ok' : 'no'}">${pass ? 'Pass' : 'Fail'}</span>
+          <div>
+            <b>${esc(c.name || '')}</b>
+            <div style="color:var(--mute); font-size:13px">${esc(c.evidence || c.rule || '')}</div>
+          </div>
+        </div>
+      `;
+    }).join('') : '<div class="empty">No constraint audit returned.</div>';
+  } catch (e) {
+    fail('#t3err', e);
+  }
+  $('#solve').disabled = false;
+};
+
+/* ============================================================== */
+/* BATCH URL REVIEW SCRAPER & FORENSICS HANDLER                   */
+/* ============================================================== */
+const urlInput = $('#urlInput');
+const scrapeBtn = $('#scrapeBtn');
+const urlErr = $('#urlErr');
+const urlResultArea = $('#urlResultArea');
+const urlPresets = $('#urlPresets');
+const scrapeStatusBadge = $('#scrapeStatusBadge');
+
+if (urlPresets) {
+  urlPresets.querySelectorAll('.chip').forEach(c => {
+    c.onclick = () => {
+      urlInput.value = c.dataset.url;
+      doScrapeUrl();
+    };
+  });
+}
+
+if (scrapeBtn) {
+  scrapeBtn.onclick = () => doScrapeUrl();
+}
+
+async function doScrapeUrl() {
+  const url = urlInput.value.trim();
+  urlErr.innerHTML = '';
+  if (!url) {
+    urlErr.innerHTML = '<div class="err">Please enter a valid product or website link.</div>';
+    return;
+  }
+
+  scrapeBtn.disabled = true;
+  scrapeStatusBadge.textContent = 'Scraping & Auditing...';
+  scrapeStatusBadge.style.color = 'var(--accent)';
+  urlResultArea.style.display = 'block';
+  $('#urlCommentsList').innerHTML = '<div class="empty">🌐 Connecting to website, extracting customer comments, and running Supervised ML models in bulk...</div>';
+
+  try {
+    const d = await api('/api/reviews/scrape_url', { url, auto_save: true });
+    if (!d.success) throw new Error(d.error || 'Failed to scrape reviews');
+
+    // Update Header
+    $('#urlProductTitle').textContent = d.product_name || 'Extracted Product';
+    $('#urlSummarySub').textContent = `Extracted from ${esc(d.url.slice(0, 50))}... via ${esc(d.scrape_method)}`;
+    $('#urlQualityScore').textContent = `${d.overall_quality_score}%`;
+    $('#urlOverallVerdict').textContent = d.overall_verdict;
+    $('#urlVerdictBox').style.setProperty('--c', d.overall_quality_score >= 65 ? 'var(--genuine)' : 'var(--smear)');
+
+    // Update Counts
+    $('#urlTotalCount').textContent = d.total_scraped;
+    $('#urlGenuineCount').textContent = d.category_counts?.genuine || 0;
+    $('#urlPromoCount').textContent = d.category_counts?.promo || 0;
+    $('#urlDefamCount').textContent = d.category_counts?.defamatory || 0;
+    $('#urlBotCount').textContent = (d.category_counts?.bot || 0) + (d.category_counts?.ai || 0);
+    $('#urlFakePct').textContent = `${d.fake_percentage}%`;
+    $('#urlListCount').textContent = d.total_scraped;
+
+    // Render Scraped Reviews
+    const revs = d.reviews || [];
+    $('#urlCommentsList').innerHTML = revs.map((r, i) => {
+      const c = colorFor(r.review_category);
+      return `
+        <div class="slot" style="background:#ffffff;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div>
+              <b>#${i + 1} ${esc(r.reviewer_name || 'Customer')}</b>
+              <span style="color:#e8a317; font-size:14px; margin-left:6px;">${'★'.repeat(+r.rating || 5)}</span>
+              ${r.is_verified ? '<span class="ok" style="font-size:11px; margin-left:6px;">✓ Verified</span>' : '<span style="color:var(--mute); font-size:11px; margin-left:6px;">Unverified</span>'}
+            </div>
+            <div style="display:flex; gap:6px; align-items:center;">
+              ${r.is_ai_generated ? '<span class="tag" style="--c:var(--ai);">🤖 AI-Generated (100%)</span>' : ''}
+              <span class="tag" style="--c:${c};">${esc(r.review_category.replace(/ \(.*\)/, ''))}</span>
+            </div>
+          </div>
+          <p style="margin:8px 0 0; color:var(--ink); font-size:13.5px; line-height:1.5;">"${esc(r.review_text)}"</p>
+          <div style="display:flex; justify-content:space-between; margin-top:8px; font-size:12px; color:var(--mute);">
+            <span>Verdict: <strong>${esc(r.product_verdict)}</strong> (ML Confidence: ${r.confidence_score}%)</span>
+            <span>Saved to SQLite ledger</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    scrapeStatusBadge.textContent = '✓ Scrape Complete';
+    scrapeStatusBadge.style.color = 'var(--genuine)';
+
+    // Update Product Name in Tab 1 and reload distribution graph
+    $('#product').value = d.product_name;
+    if (d.brand && d.brand !== 'General') $('#brand').value = d.brand;
+    loadDist();
+    loadHistory();
+
+  } catch (err) {
+    fail('#urlErr', err);
+    scrapeStatusBadge.textContent = 'Error';
+    scrapeStatusBadge.style.color = 'var(--smear)';
+    $('#urlCommentsList').innerHTML = `<div class="err">Could not complete URL scraping: ${esc(err.message)}</div>`;
+  }
+  scrapeBtn.disabled = false;
+}
+
+// Initial draw
+drawBars([0, 0, 0, 0, 0, 0]);
+loadDist();
+</script>
+</body>
+</html>
